@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 🚀 dApp: Stellar Assets Manager (Clase 8)
 
-## Getting Started
+## 🚧 Estado del Proyecto
 
-First, run the development server:
+**Estado:** FALLO DE COMPILACIÓN (BUILD FAILED)
+**Última Versión Subida a Vercel:** https://dapp-stellar-assets-7qYgVgrH5B5Yyeb9tgczaz5DuVVG.vercel.app/
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ❌ Errores Críticos Encontrados
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+El proyecto no pudo completar el proceso de compilación (`npm run build`) en la plataforma Vercel debido a dos errores persistentes. El código fuente local funciona correctamente (asumiendo que las dependencias están instaladas).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Fallo de Dependencia (`stellar-sdk`) - Error de Retorno
 
-## Learn More
+Este error es el más crítico y persistente. A pesar de que la librería `stellar-sdk` está correctamente listada en el `package.json`, Vercel falla al intentar instalarla o resolverla en el momento de la compilación.
 
-To learn more about Next.js, take a look at the following resources:
+* **Mensaje de Error en Vercel:**
+    ```
+    Module not found: Can't resolve 'stellar-sdk'
+    ```
+* **Acciones Tomadas:**
+    * Verificación y corrección de `package.json` para incluir `stellar-sdk` y otras dependencias (`@supabase/supabase-js`, `@stellar/freighter-api`).
+    * Limpieza local de caché (`rm -rf node_modules`, `rm package-lock.json`).
+    * Múltiples `npm install` y *pushes* a GitHub.
+* **Conclusión:** Sugiere un problema de caché, conflicto de versiones en el `package-lock.json` o un problema específico del entorno Vercel/Next.js que no se pudo replicar ni solucionar con el proceso estándar.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2. Conflicto de Rutas (Sensibilidad a Mayúsculas/Minúsculas)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Este error fue el segundo más difícil y se relaciona con cómo Vercel (un entorno Linux, sensible a mayúsculas/minúsculas) lee el índice de Git.
 
-## Deploy on Vercel
+* **Mensaje de Error en Vercel:**
+    ```
+    Module not found: Can't resolve '../lib/constants'
+    ```
+* **Acciones Tomadas:**
+    * Identificación de un posible error de *case-sensitivity* (singular/plural) en el nombre del archivo `constants.js`.
+    * Corrección de las rutas de importación en todos los componentes (`AssetBalance.jsx`, `CreateTrustline.jsx`).
+    * Intentos de forzar el renombre del archivo en Git (`git mv`).
+    * **Última Acción:** Se eliminó y recreó el archivo `constants.js` para forzar a Git a registrar el nombre limpio.
+* **Conclusión:** Aunque la corrección se implementó en el código, el error de `stellar-sdk` reapareció antes de confirmar si la solución a este error funcionó.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📚 Tareas Pendientes (Funcionalidad)
+
+* **Mostrar Balance:** (Completado en código) Consultar el balance de USDC/EURC en la red Stellar.
+* **Crear Trustline:** (Completado en código) Operación `ChangeTrust` para permitir recibir un activo.
+* **Integración de Supabase:** (Completado en código) Uso de Supabase para guardar la metadata de las `trustlines`.
+
+---
