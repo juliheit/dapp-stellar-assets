@@ -16,7 +16,7 @@ import { signTransaction, getPublicKey } from '@stellar/freighter-api';
 // Importar cliente de Supabase
 import { supabase } from '../lib/supabase';
 // Importar constantes
-import { HORIZON_URLS } from '../lib/constants.js';
+import { HORIZON_URLS } from '../lib/constants';
 // Importar Spinner
 import Spinner from './Spinner';
 
