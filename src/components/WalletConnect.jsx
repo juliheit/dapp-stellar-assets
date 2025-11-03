@@ -23,27 +23,37 @@ export default function WalletConnect({ onConnect }) {
   // Estado para mostrar errores
   const [error, setError] = useState(null);
 
+  // Estado para saber si Freighter está instalado
+  const [isFreighterInstalled, setIsFreighterInstalled] = useState(false);
+
   /**
    * useEffect: Se ejecuta cuando el componente se monta
-   * Verifica si Freighter ya está conectado automáticamente
+   * Verifica si Freighter está instalado (con delay)
    */
   useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        // Verificar si Freighter está instalado y conectado
-        if (window.freighter) {
+    const checkFreighter = async () => {
+      // Esperar 500ms para que Freighter se inyecte
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (window.freighter) {
+        setIsFreighterInstalled(true);
+        
+        // Intentar conectar automáticamente si ya dio permiso antes
+        try {
           const key = await window.freighter.getPublicKey();
-          setPublicKey(key);
-          onConnect(key);
+          if (key) {
+            setPublicKey(key);
+            onConnect(key);
+          }
+        } catch (err) {
+          // No hacer nada si no está conectado
+          console.log('Freighter instalado pero no conectado');
         }
-      } catch (err) {
-        // No mostrar error si simplemente no está conectado
-        console.error('Freighter no disponible o no conectado', err);
       }
     };
     
-    checkConnection();
-  }, [onConnect]); // Dependencia correcta
+    checkFreighter();
+  }, [onConnect]);
 
   /**
    * Función para conectar la wallet manualmente
@@ -54,6 +64,9 @@ export default function WalletConnect({ onConnect }) {
     setError(null);
     
     try {
+      // Esperar un poco más por si acaso
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Verificar que window.freighter existe (extensión instalada)
       if (!window.freighter) {
         throw new Error(
@@ -64,6 +77,10 @@ export default function WalletConnect({ onConnect }) {
       // Solicitar acceso a la public key
       // Esto abre un popup de Freighter pidiendo permiso
       const key = await window.freighter.getPublicKey();
+      
+      if (!key) {
+        throw new Error('No se pudo obtener la public key');
+      }
       
       // Guardar public key en el estado
       setPublicKey(key);
@@ -106,6 +123,15 @@ export default function WalletConnect({ onConnect }) {
         🔗 Conectar Wallet
       </h2>
       
+      {/* Mostrar advertencia si Freighter NO está instalado */}
+      {!isFreighterInstalled && !loading && (
+        <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded">
+          <p className="text-yellow-800 text-sm">
+            ⚠️ Freighter no detectado. Asegúrate de tenerlo instalado y recarga la página.
+          </p>
+        </div>
+      )}
+      
       {/* Mostrar error si existe */}
       {error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 rounded">
@@ -119,7 +145,7 @@ export default function WalletConnect({ onConnect }) {
         <div>
           <button
             onClick={connectWallet}
-            disabled={loading}
+            disabled={loading || !isFreighterInstalled}
             className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg 
                        hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed
                        transition-colors"
