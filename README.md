@@ -374,8 +374,8 @@ import('stellar-sdk').then(StellarSdk => {
 
 ## 📖 Lecciones Aprendidas
 
-### 1. Documentación Incorrecta es el Mayor Problema
-El material de clase tenía **errores críticos** en cómo usar Freighter API:
+### 1. Documentación Incorrecta
+ **Errores** al usar Freighter API:
 - ❌ `window.freighter` (no existe)
 - ❌ `getPublicKey()` (función inexistente)
 - ✅ Usar `isConnected()`, `requestAccess()`, `getAddress()`
