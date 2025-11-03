@@ -3,8 +3,6 @@
 'use client'; // Necesario para Next.js App Router (componente del cliente)
 
 import { useState, useEffect } from 'react';
-// Importar funciones de Freighter API
-import { isConnected, getPublicKey } from '@stellar/freighter-api';
 
 /**
  * Componente WalletConnect
@@ -30,27 +28,22 @@ export default function WalletConnect({ onConnect }) {
    * Verifica si Freighter ya está conectado automáticamente
    */
   useEffect(() => {
-    async function checkConnection() {
-      setLoading(true);
+    const checkConnection = async () => {
       try {
         // Verificar si Freighter está instalado y conectado
-        if (await isConnected()) {
-          // Si está conectado, obtener la public key
-          const key = await getPublicKey();
+        if (window.freighter) {
+          const key = await window.freighter.getPublicKey();
           setPublicKey(key);
-          // Notificar al componente padre (page.jsx)
           onConnect(key);
         }
       } catch (err) {
-        // Si hay error, no hacer nada (usuario probablemente no tiene Freighter)
-        console.log('Freighter not connected:', err);
-      } finally {
-        setLoading(false);
+        // No mostrar error si simplemente no está conectado
+        console.error('Freighter no disponible o no conectado', err);
       }
-    }
+    };
     
     checkConnection();
-  }, [onConnect]); // Solo ejecutar una vez al montar
+  }, [onConnect]); // Dependencia correcta
 
   /**
    * Función para conectar la wallet manualmente
@@ -63,12 +56,14 @@ export default function WalletConnect({ onConnect }) {
     try {
       // Verificar que window.freighter existe (extensión instalada)
       if (!window.freighter) {
-        throw new Error('Freighter Wallet no está instalada');
+        throw new Error(
+          'Freighter Wallet no está instalada. Descárgala desde https://freighter.app'
+        );
       }
       
       // Solicitar acceso a la public key
       // Esto abre un popup de Freighter pidiendo permiso
-      const key = await getPublicKey();
+      const key = await window.freighter.getPublicKey();
       
       // Guardar public key en el estado
       setPublicKey(key);
@@ -93,6 +88,13 @@ export default function WalletConnect({ onConnect }) {
   const formatAddress = (address) => {
     if (!address) return '';
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  };
+
+  // 🌟 MEJORA DE ORO #3: Copiar Public Key
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(publicKey);
+    // Opcional: Mostrar mensaje de confirmación
+    alert('Public key copiada al portapapeles!');
   };
 
   // ========== RENDER DEL COMPONENTE ==========
@@ -144,12 +146,24 @@ export default function WalletConnect({ onConnect }) {
           <p className="text-green-800 font-bold mb-2">
             ✅ Wallet Conectada
           </p>
-          <p className="text-sm text-gray-600 font-mono break-all">
-            {formatAddress(publicKey)}
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Public Key: {publicKey}
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 font-mono break-all">
+                {formatAddress(publicKey)}
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Public Key: {publicKey}
+              </p>
+            </div>
+            {/* 🌟 MEJORA DE ORO #3: Botón Copiar */}
+            <button
+              onClick={copyToClipboard}
+              className="ml-2 px-3 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
+              title="Copiar public key"
+            >
+              📋 Copiar
+            </button>
+          </div>
         </div>
       )}
     </div>
