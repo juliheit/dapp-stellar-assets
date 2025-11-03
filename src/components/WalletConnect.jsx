@@ -8,53 +8,57 @@ export default function WalletConnect({ onConnect }) {
   const [publicKey, setPublicKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [checkingFreighter, setCheckingFreighter] = useState(true);
+  const [freighterReady, setFreighterReady] = useState(false);
 
-  /**
-   * useEffect: Detectar Freighter con reintentos
-   */
   useEffect(() => {
-    let attempts = 0;
-    const maxAttempts = 10;
+    let mounted = true;
+    let checkCount = 0;
     
-    const checkFreighter = async () => {
+    const waitForFreighter = () => {
+      checkCount++;
+      
       if (window.freighter) {
-        setCheckingFreighter(false);
-        
-        // Intentar conexión automática
-        try {
-          const key = await window.freighter.getPublicKey();
-          if (key) {
-            setPublicKey(key);
-            onConnect(key);
-          }
-        } catch (err) {
-          console.log('Freighter disponible pero no conectado');
+        if (mounted) {
+          console.log('✅ Freighter detectado!');
+          setFreighterReady(true);
         }
         return;
       }
       
-      attempts++;
-      if (attempts < maxAttempts) {
-        setTimeout(checkFreighter, 300);
+      if (checkCount < 20) {
+        console.log(`Intento ${checkCount}/20: Buscando Freighter...`);
+        setTimeout(waitForFreighter, 500);
       } else {
-        setCheckingFreighter(false);
+        console.log('❌ Freighter no encontrado después de 10 segundos');
+        if (mounted) {
+          setFreighterReady(false);
+        }
       }
     };
     
-    checkFreighter();
-  }, [onConnect]);
+    // Iniciar detección
+    waitForFreighter();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const connectWallet = async () => {
     setLoading(true);
     setError(null);
     
     try {
+      console.log('Intentando conectar...');
+      console.log('window.freighter:', window.freighter);
+      
       if (!window.freighter) {
         throw new Error('Freighter Wallet no está instalada');
       }
       
+      console.log('Llamando a getPublicKey...');
       const key = await window.freighter.getPublicKey();
+      console.log('Public key obtenida:', key);
       
       if (!key) {
         throw new Error('No se pudo obtener la public key');
@@ -64,8 +68,8 @@ export default function WalletConnect({ onConnect }) {
       onConnect(key);
       
     } catch (err) {
+      console.error('Error completo:', err);
       setError(err.message);
-      console.error('Error connecting wallet:', err);
     } finally {
       setLoading(false);
     }
@@ -93,18 +97,24 @@ export default function WalletConnect({ onConnect }) {
         </div>
       )}
       
+      {!freighterReady && (
+        <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded">
+          <p className="text-yellow-800 text-sm">
+            🔍 Buscando Freighter... Si este mensaje persiste, asegúrate de que Freighter esté instalado y habilitado.
+          </p>
+        </div>
+      )}
+      
       {!publicKey ? (
         <div>
           <button
             onClick={connectWallet}
-            disabled={loading || checkingFreighter}
+            disabled={loading}
             className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg 
                        hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed
                        transition-colors"
           >
-            {checkingFreighter ? '🔍 Detectando Freighter...' : 
-             loading ? '⏳ Conectando...' : 
-             '🔗 Conectar Freighter'}
+            {loading ? '⏳ Conectando...' : '🔗 Conectar Freighter'}
           </button>
           
           <p className="text-sm text-gray-500 mt-3 text-center">
@@ -143,6 +153,11 @@ export default function WalletConnect({ onConnect }) {
           </div>
         </div>
       )}
+      
+      {/* Debug info */}
+      <div className="mt-4 p-2 bg-gray-50 rounded text-xs text-gray-600">
+        Debug: Freighter {freighterReady ? '✅ Detectado' : '❌ No detectado'}
+      </div>
     </div>
   );
 }
