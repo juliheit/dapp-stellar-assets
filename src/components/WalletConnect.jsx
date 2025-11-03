@@ -1,163 +1,127 @@
 // src/components/WalletConnect.jsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
+import { get  } from '@stellar/freighter-api'; // Revisa si tu importación es correcta. Debería ser 'getPublicKey' o 'getAddress'.
+import { getAddress } from '@stellar/freighter-api'; // Asumiendo que usas getAddress
+import Spinner from './Spinner';
 
-export default function WalletConnect({ onConnect }) {
-  const [publicKey, setPublicKey] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [freighterReady, setFreighterReady] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    let checkCount = 0;
-    
-    const waitForFreighter = () => {
-      checkCount++;
-      
-      if (window.freighter) {
-        if (mounted) {
-          console.log('✅ Freighter detectado!');
-          setFreighterReady(true);
-        }
-        return;
-      }
-      
-      if (checkCount < 20) {
-        console.log(`Intento ${checkCount}/20: Buscando Freighter...`);
-        setTimeout(waitForFreighter, 500);
-      } else {
-        console.log('❌ Freighter no encontrado después de 10 segundos');
-        if (mounted) {
-          setFreighterReady(false);
-        }
-      }
-    };
-    
-    // Iniciar detección
-    waitForFreighter();
-    
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const connectWallet = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log('Intentando conectar...');
-      console.log('window.freighter:', window.freighter);
-      
-      if (!window.freighter) {
-        throw new Error('Freighter Wallet no está instalada');
-      }
-      
-      console.log('Llamando a getPublicKey...');
-      const key = await window.freighter.getPublicKey();
-      console.log('Public key obtenida:', key);
-      
-      if (!key) {
-        throw new Error('No se pudo obtener la public key');
-      }
-      
-      setPublicKey(key);
-      onConnect(key);
-      
-    } catch (err) {
-      console.error('Error completo:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+// Función auxiliar para formatear la dirección
+const formatAddress = (address) => {
+    //  CORRECCIÓN: Verifica que address sea una cadena de texto y que exista
+    if (typeof address === 'string' && address.length > 8) { 
+        return `${address.slice(0, 4)}...${address.slice(-4)}`;
     }
-  };
+    // Si no es un string o es demasiado corto, devuelve un valor por defecto
+    return 'Wallet desconectada';
+};
 
-  const formatAddress = (address) => {
-    if (!address) return '';
-    return `${address.slice(0, 4)}...${address.slice(-4)}`;
-  };
+/**
+ * Componente que gestiona la conexión con la wallet Freighter.
+ * Llama a onConnect(publicKey) al conectar exitosamente.
+ */
+export default function WalletConnect({ onConnect }) {
+    const [publicKey, setPublicKey] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(publicKey);
-    alert('Public key copiada al portapapeles!');
-  };
+    // Función para conectar la wallet
+    const connectWallet = async () => {
+        setIsLoading(true);
+        setError('');
+        
+        try {
+            // Utilizamos getAddress() para obtener la clave pública
+            const pubKey = await getAddress();
+            
+            setPublicKey(pubKey);
+            setIsConnected(true);
+            
+            // Notificamos al componente padre
+            if (onConnect) {
+                onConnect(pubKey);
+            }
+        } catch (e) {
+            console.error("Error al conectar Freighter:", e);
+            setError("Error al conectar la wallet. Asegúrate de que Freighter está instalado y funcionando.");
+            setPublicKey(null);
+            setIsConnected(false);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    // Efecto para verificar la conexión inicial y establecer el estado
+    useEffect(() => {
+        const checkConnection = async () => {
+            if (typeof window.freighterApi !== 'undefined') {
+                try {
+                    // Si Freighter está instalado, verifica si ya está conectado
+                    const connected = await window.freighterApi.isConnected();
+                    setIsConnected(connected);
 
-  return (
-    <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">
-        🔗 Conectar Wallet
-      </h2>
-      
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-400 rounded">
-          <p className="text-red-700 text-sm">❌ {error}</p>
+                    if (connected) {
+                        const pubKey = await getAddress();
+                        setPublicKey(pubKey);
+                        if (onConnect) {
+                            onConnect(pubKey);
+                        }
+                    } else {
+                        setPublicKey(null);
+                    }
+                } catch (e) {
+                    console.error("Error verificando la conexión inicial:", e);
+                    // No hacemos nada, solo mantenemos el estado desconectado
+                }
+            } else {
+                 setError('Freighter no detectado. Instala la extensión.');
+            }
+        };
+
+        checkConnection();
+    }, [onConnect]); // onConnect es una dependencia estable (prop del padre)
+
+    return (
+        <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">
+                Conexión de Wallet
+            </h3>
+            
+            {error && (
+                <p className="text-red-600 text-sm mb-4 bg-red-100 p-2 rounded">
+                    ❌ {error}
+                </p>
+            )}
+
+            {!isConnected ? (
+                <button
+                    onClick={connectWallet}
+                    disabled={isLoading}
+                    className={`w-full py-3 px-4 rounded-lg font-bold text-white transition duration-200 flex items-center justify-center ${
+                        isLoading || error 
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-indigo-600 hover:bg-indigo-700'
+                    }`}
+                >
+                    {isLoading ? (
+                        <>
+                            <Spinner />
+                            <span className="ml-2">Conectando...</span>
+                        </>
+                    ) : (
+                        "Conectar con Freighter"
+                    )}
+                </button>
+            ) : (
+                <div className="mt-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <p className="font-semibold text-green-800">✅ Wallet Conectada</p>
+                    <p className="text-sm font-mono text-gray-700 break-all mt-1">
+                        {formatAddress(publicKey)}
+                    </p>
+                    {/* Botón opcional para desconectar o simplemente mostrar el estado */}
+                </div>
+            )}
         </div>
-      )}
-      
-      {!freighterReady && (
-        <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded">
-          <p className="text-yellow-800 text-sm">
-            🔍 Buscando Freighter... Si este mensaje persiste, asegúrate de que Freighter esté instalado y habilitado.
-          </p>
-        </div>
-      )}
-      
-      {!publicKey ? (
-        <div>
-          <button
-            onClick={connectWallet}
-            disabled={loading}
-            className="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg 
-                       hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed
-                       transition-colors"
-          >
-            {loading ? '⏳ Conectando...' : '🔗 Conectar Freighter'}
-          </button>
-          
-          <p className="text-sm text-gray-500 mt-3 text-center">
-            ¿No tienes Freighter?{' '}
-            <a 
-              href="https://www.freighter.app" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:underline"
-            >
-              Descárgala aquí
-            </a>
-          </p>
-        </div>
-      ) : (
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <p className="text-green-800 font-bold mb-2">
-            ✅ Wallet Conectada
-          </p>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-mono break-all">
-                {formatAddress(publicKey)}
-              </p>
-              <p className="text-xs text-gray-500 mt-2">
-                Public Key: {publicKey}
-              </p>
-            </div>
-            <button
-              onClick={copyToClipboard}
-              className="ml-2 px-3 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
-              title="Copiar public key"
-            >
-              📋 Copiar
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {/* Debug info */}
-      <div className="mt-4 p-2 bg-gray-50 rounded text-xs text-gray-600">
-        Debug: Freighter {freighterReady ? '✅ Detectado' : '❌ No detectado'}
-      </div>
-    </div>
-  );
+    );
 }
