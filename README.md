@@ -57,8 +57,8 @@ Una vez que el proyecto se estabilizó localmente, se encontraron y resolvieron 
 
 | Error Reportado | Archivos Afectados | Solución Definitiva |
 |----------------|-------------------|---------------------|
-| `window.freighter is undefined` | `WalletConnect.jsx` | **Error en la documentación de clase**: Freighter NO inyecta un objeto `window.freighter`. Se debe usar `@stellar/freighter-api` importando las funciones directamente: `import { isConnected, requestAccess, getAddress } from '@stellar/freighter-api'` |
-| `getPublicKey is not a function` | `CreateTrustline.jsx`, `WalletConnect.jsx` | **API incorrecta en documentación**: La función `getPublicKey()` no existe en Freighter API. La función correcta es `getAddress()` que retorna un objeto `{ address: "GAB..." }` |
+| `window.freighter is undefined` | `WalletConnect.jsx` | **Error en la documentación**: Freighter NO inyecta un objeto `window.freighter`. Se debe usar `@stellar/freighter-api` importando las funciones directamente: `import { isConnected, requestAccess, getAddress } from '@stellar/freighter-api'` |
+| `getPublicKey is not a function` | `CreateTrustline.jsx`, `WalletConnect.jsx` | **API incorrecta**: La función `getPublicKey()` no existe en Freighter API. La función correcta es `getAddress()` que retorna un objeto `{ address: "GAB..." }` |
 | Intentos de conexión fallidos en loop (20 intentos buscando Freighter) | `WalletConnect.jsx` | Se eliminó la lógica de polling que buscaba `window.freighter` y se reemplazó por verificación directa con `isConnected()` |
 | `Freighter Wallet no está instalada` (error falso positivo) | `WalletConnect.jsx` | Se corrigió la verificación usando `const connected = await isConnected()` y luego verificando `connected.isConnected` |
 
@@ -374,8 +374,8 @@ import('stellar-sdk').then(StellarSdk => {
 
 ## 📖 Lecciones Aprendidas
 
-### 1. Documentación Incorrecta es el Mayor Problema
-El material de clase tenía **errores críticos** en cómo usar Freighter API:
+### 1. Documentación Incorrecta
+ **Errores** al usar Freighter API:
 - ❌ `window.freighter` (no existe)
 - ❌ `getPublicKey()` (función inexistente)
 - ✅ Usar `isConnected()`, `requestAccess()`, `getAddress()`
