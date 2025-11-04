@@ -33,11 +33,13 @@ export default function WalletConnect({ onConnect }) {
         
         try {
             // Utilizamos getAddress() para obtener la clave pública
-            const pubKey = await getAddress();
-            
+            const result = await getAddress();
+            console.log("🔍 Resultado de Freighter:", result);
+
+            const pubKey = result.address; // Extraer solo el string
             setPublicKey(pubKey);
             setIsConnected(true);
-            
+
             // Notificamos al componente padre
             if (onConnect) {
                 onConnect(pubKey);
@@ -62,9 +64,10 @@ export default function WalletConnect({ onConnect }) {
                     setIsConnected(connected);
 
                     if (connected) {
-                        const pubKey = await getAddress();
-                        setPublicKey(pubKey);
-                        if (onConnect) {
+                         const result = await getAddress();
+                         const pubKey = result.address; // Extraer solo el string
+                         setPublicKey(pubKey);
+                         if (onConnect) {
                             onConnect(pubKey);
                         }
                     } else {

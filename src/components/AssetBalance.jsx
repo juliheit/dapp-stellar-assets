@@ -2,136 +2,109 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import * as StellarSDK from 'stellar-sdk'; 
-import { getAddress } from '@stellar/freighter-api';
-import { HORIZON_URLS, USDC_TESTNET } from '../lib/constants';
-import Spinner from './Spinner';
+import { useState, useEffect } from 'react';
+import * as StellarSDK from '@stellar/stellar-sdk';
+import { HORIZON_URLS } from '../lib/constants';
 
-/**
- * Componente para mostrar el balance del activo (Trustline) del usuario.
- */
-export default function AssetBalance() {
+export default function AssetBalance({ publicKey, asset }) {
     const [balance, setBalance] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [isConnected, setIsConnected] = useState(false);
-    const [publicKey, setPublicKey] = useState('');
+    const [hasTrustline, setHasTrustline] = useState(false);
 
-    // Definición del Asset usando la clase corregida
-    const asset = new StellarSDK.Asset(USDC_TESTNET.code, USDC_TESTNET.issuer);
-
-    const fetchBalance = useCallback(async (walletPublicKey) => {
-        setIsLoading(true);
-        setError('');
-        
-        try {
-            const server = new StellarSDK.Server(HORIZON_URLS.testnet); 
-            
-            const account = await server.loadAccount(walletPublicKey);
-            
-            const assetBalance = account.balances.find(b => 
-                b.asset_code === asset.code && 
-                b.asset_issuer === asset.issuer
-            );
-
-            if (assetBalance) {
-                setBalance(assetBalance.balance);
-            } else {
-                setBalance("0.0000000"); // No tiene Trustline o balance es 0
-            }
-        } catch (e) {
-            console.error("Error fetching balance:", e);
-            
-            if (e.name === 'NotFoundError') {
-                setError("La cuenta no está fondeada o la Trustline no existe aún. Necesitas al menos 1 XLM.");
-                setBalance("0.0000000");
-            } else {
-                setError(`Error al cargar el balance: ${e.message}`);
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    }, [asset]); // ✅ CORRECCIÓN FINAL: asset es una dependencia del callback
-
-    // Efecto para verificar conexión y cargar balance
     useEffect(() => {
-        const checkWalletAndFetch = async () => {
-            if (typeof window !== 'undefined' && window.freighterApi) {
-                try {
-                    // Verificar la conexión primero
-                    if (await window.freighterApi.isConnected()) {
-                        const pubKey = await getAddress();
-                        setPublicKey(pubKey);
-                        setIsConnected(true);
-                        // Llamar a fetchBalance solo si hay una clave pública
-                        if (pubKey) {
-                            fetchBalance(pubKey);
-                        }
-                    } else {
-                        setPublicKey('');
-                        setIsConnected(false);
-                    }
-                } catch (e) {
-                    console.error("Error de conexión:", e);
-                    setError("Error al obtener la clave pública de Freighter.");
-                    setIsConnected(false);
+        const fetchBalance = async () => {
+            if (!publicKey || !asset) {
+                return;
+            }
+
+            setLoading(true);
+            setError('');
+
+            try {
+                console.log('Buscando balance para:', asset.code);
+                
+                const server = new StellarSDK.Horizon.Server(HORIZON_URLS.testnet);
+                const account = await server.loadAccount(publicKey);
+
+                console.log('Todos los balances:', account.balances);
+
+                const assetBalance = account.balances.find(
+                    (b) =>
+                        b.asset_code === asset.code &&
+                        b.asset_issuer === asset.issuer
+                );
+
+                console.log('Balance encontrado:', assetBalance);
+
+                if (assetBalance) {
+                    setBalance(assetBalance.balance);
+                    setHasTrustline(true);
+                    console.log(`Balance de ${asset.code}:`, assetBalance.balance);
+                } else {
+                    setBalance(null);
+                    setHasTrustline(false);
+                    setError(`No se encontró trustline para ${asset.code}. Créala primero.`);
                 }
+
+            } catch (err) {
+                console.error('Error al obtener balance:', err);
+                setError(`Error: ${err.message}`);
+                setHasTrustline(false);
+            } finally {
+                setLoading(false);
             }
         };
 
-        checkWalletAndFetch();
+        fetchBalance();
+    }, [publicKey, asset]);
 
-        // Refrescar el balance cada 10 segundos
-        const intervalId = setInterval(checkWalletAndFetch, 10000); 
-
-        return () => clearInterval(intervalId);
-    }, [fetchBalance]); // ✅ fetchBalance es la única dependencia externa aquí
-
+    if (!publicKey) {
+        return (
+            <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                    Balance del Activo ({asset?.code || 'Asset'})
+                </h3>
+                <p className="text-gray-600 text-sm">
+                    Conecta tu wallet para ver el balance de {asset?.code || 'este activo'}.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">
-                💰 Balance del Activo ({USDC_TESTNET.code})
+                Balance del Activo ({asset?.code || 'Asset'})
             </h3>
-            
-            {/* Mostrar spinner si está cargando */}
-            {isLoading && (
-                <div className="flex justify-center py-4">
-                    <Spinner />
+
+            {loading ? (
+                <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="text-gray-600 text-sm mt-2">Cargando balance...</p>
                 </div>
-            )}
-
-            {/* Mostrar error si ocurre */}
-            {error && (
-                <p className="text-red-600 text-sm mb-4 bg-red-100 p-2 rounded">
-                    ❌ {error}
-                </p>
-            )}
-
-            {/* Mostrar el balance */}
-            {isConnected && !isLoading && !error && (
+            ) : hasTrustline && balance !== null ? (
                 <div>
-                    <p className="text-sm font-medium text-gray-500">
-                        Cuenta Conectada:
-                    </p>
-                    <p className="text-sm font-mono text-gray-700 break-all mb-4">
-                        {publicKey}
-                    </p>
-                    
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200 text-center">
-                        <p className="text-xl font-bold text-blue-800">
-                            Balance: {balance} {USDC_TESTNET.code}
+                    <div className="text-center py-6">
+                        <p className="text-5xl font-bold text-green-600 mb-2">
+                            {parseFloat(balance).toFixed(2)}
+                        </p>
+                        <p className="text-gray-600 font-semibold text-lg">
+                            {asset?.code || 'Asset'}
+                        </p>
+                    </div>
+                    <div className="mt-4 p-3 bg-green-50 rounded border border-green-200">
+                        <p className="text-xs text-green-800 text-center">
+                            Balance actualizado correctamente
                         </p>
                     </div>
                 </div>
-            )}
-
-            {/* Mensaje si no está conectado */}
-            {!isConnected && !isLoading && (
-                <p className="text-gray-500 italic">
-                    Conecta tu wallet para ver el balance de {USDC_TESTNET.code}.
-                </p>
+            ) : (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-yellow-800 text-sm">
+                        {error || `No tienes trustline para ${asset?.code}. Créala primero usando el botón de arriba.`}
+                    </p>
+                </div>
             )}
         </div>
     );

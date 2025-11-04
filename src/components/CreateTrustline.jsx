@@ -3,18 +3,12 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-// SOLUCIÓN DEFINITIVA DE IMPORTACIÓN: Usamos el Namespace completo
-import * as StellarSDK from 'stellar-sdk'; 
+import * as StellarSDK from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
-// Importamos las constantes necesarias
 import { HORIZON_URLS, NETWORK_PASSPHRASES } from '../lib/constants';
 
-// Valores límite para el Trustline
 const MAX_LIMIT = '1000000000'; 
 
-/**
- * Componente para crear y firmar una Trustline (línea de confianza)
- */
 export default function CreateTrustline({ publicKey, asset, onSuccess }) {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState('');
@@ -22,94 +16,166 @@ export default function CreateTrustline({ publicKey, asset, onSuccess }) {
 
     const createTrustline = useCallback(async () => {
         if (!publicKey) {
-            setError("Por favor, conecta tu wallet antes de crear la Trustline.");
+            setError('Por favor conecta tu wallet primero');
+            return;
+        }
+
+        if (!asset || !asset.code || !asset.issuer) {
+            setError('Información del asset incompleta');
             return;
         }
 
         setIsLoading(true);
-        setStatus('Preparando transacción...');
         setError('');
+        setStatus('Creando trustline...');
 
         try {
-            // Uso de StellarSDK.Server corregido
-            const server = new StellarSDK.Server(HORIZON_URLS.testnet);
+            console.log('🚀 Iniciando creación de trustline para:', asset.code);
+            console.log('📍 Issuer:', asset.issuer);
             
-            // Activo definido usando el prop 'asset' (que es USDC_TESTNET)
-            const stellarAsset = new StellarSDK.Asset(
-                asset.code, 
-                asset.issuer
-            );
-
-            // Cargar la cuenta de la red para obtener el sequence number
+            const server = new StellarSDK.Horizon.Server(HORIZON_URLS.testnet);
             const account = await server.loadAccount(publicKey);
-            setStatus('Cuenta cargada, construyendo operación...');
-            
-            // Construir la operación para establecer la línea de confianza
-            const trustlineOperation = StellarSDK.Operation.changeTrust({
-                asset: stellarAsset,
-                limit: MAX_LIMIT,
-            });
 
-            // Construir la Transacción
-            let transaction = new StellarSDK.TransactionBuilder(account, {
-                fee: '100',
+            console.log('📊 Balance actual:', account.balances);
+
+            // Crear el asset de Stellar
+            const stellarAsset = new StellarSDK.Asset(asset.code, asset.issuer);
+
+            // Construir la transacción
+            const transaction = new StellarSDK.TransactionBuilder(account, {
+                fee: StellarSDK.BASE_FEE,
                 networkPassphrase: NETWORK_PASSPHRASES.testnet,
             })
-                .addOperation(trustlineOperation)
-                .setTimeout(30)
+                .addOperation(
+                    StellarSDK.Operation.changeTrust({
+                        asset: stellarAsset,
+                        limit: MAX_LIMIT,
+                    })
+                )
+                .setTimeout(180)
                 .build();
 
-            setStatus('Esperando la firma de Freighter...');
+            const xdr = transaction.toXDR();
+            console.log('📤 XDR creado, longitud:', xdr.length);
+            
+            setStatus('Esperando firma de Freighter...');
 
-            // Firmar la transacción con Freighter
-            const signedTransaction = await signTransaction({
-                transactionXDR: transaction.toXDR(),
-                network: 'TESTNET',
-            });
+            // 🔥 SOLUCIÓN: Usar solo el string XDR sin objeto wrapper
+            let signedXDR;
+            
+            try {
+                // Intento 1: Forma simple (solo string)
+                console.log('🧪 Intentando firma - Método 1: string directo');
+                const result = await signTransaction(xdr, {
+                    network: 'TESTNET',
+                    networkPassphrase: NETWORK_PASSPHRASES.testnet,
+                });
+                
+                console.log("🔍 Resultado método 1:", result);
+                signedXDR = result.signedTxXdr || result;
+                
+            } catch (error1) {
+                console.log('❌ Método 1 falló, intentando método 2...');
+                
+                try {
+                    // Intento 2: Forma con objeto (tu forma actual)
+                    console.log('🧪 Intentando firma - Método 2: objeto con transactionXDR');
+                    const result2 = await signTransaction({
+                        transactionXDR: xdr,
+                        network: 'TESTNET',
+                    });
+                    
+                    console.log("🔍 Resultado método 2:", result2);
+                    signedXDR = result2.signedTxXdr || result2;
+                    
+                } catch (error2) {
+                    console.log('❌ Método 2 falló, intentando método 3...');
+                    
+                    // Intento 3: Forma más simple sin networkPassphrase
+                    console.log('🧪 Intentando firma - Método 3: mínimo');
+                    const result3 = await signTransaction(xdr, 'TESTNET');
+                    
+                    console.log("🔍 Resultado método 3:", result3);
+                    signedXDR = result3.signedTxXdr || result3;
+                }
+            }
 
-            // Reconstruir la transacción firmada para enviarla
-            const transactionToSend = StellarSDK.TransactionBuilder.fromXDR(
-                signedTransaction,
-                NETWORK_PASSPHRASES.testnet
-            );
+            console.log("🔍 XDR firmado:", signedXDR ? 'Recibido ✅' : 'Vacío ❌');
+
+            if (!signedXDR || signedXDR === '') {
+                throw new Error('No se pudo obtener la transacción firmada de Freighter');
+            }
+
+            console.log("✅ Transacción firmada correctamente");
 
             setStatus('Enviando transacción a la red Stellar...');
 
-            // Enviar la transacción a Horizon
-            const transactionResult = await server.submitTransaction(transactionToSend);
+            // Reconstruir la transacción desde el XDR firmado
+            const transactionToSend = StellarSDK.TransactionBuilder.fromXDR(
+                signedXDR,
+                NETWORK_PASSPHRASES.testnet
+            );
 
-            console.log("Trustline creada con éxito. Hash:", transactionResult.hash);
-            setStatus(`✅ ¡Trustline creada con éxito! Hash: ${transactionResult.hash.substring(0, 10)}...`);
+            console.log('📡 Enviando a Horizon...');
+
+            // Enviar la transacción
+            const response = await server.submitTransaction(transactionToSend);
             
-            // Notificamos al padre para que AssetBalance se actualice
-            if (onSuccess) onSuccess(); 
+            console.log('✅ Trustline creada exitosamente!');
+            console.log('🔗 Hash:', response.hash);
 
-        } catch (e) {
-            console.error("Error al crear Trustline:", e);
-            if (e.message && e.message.includes('op_no_change')) {
-                 setError('La Trustline ya existe. No se realizó ningún cambio.');
-            } else if (e.message && e.message.includes('tx_bad_auth')) {
-                 setError('Error de autorización. Asegúrate de haber firmado la transacción.');
+            setStatus(`✅ Trustline creada exitosamente!`);
+            setError('');
+            
+            if (onSuccess) {
+                setTimeout(() => {
+                    onSuccess(response);
+                }, 1000);
             }
-            else {
-                setError(`Error de Stellar: ${e.message}`);
+
+        } catch (err) {
+            console.error('❌ Error completo:', err);
+            console.error('❌ Mensaje:', err.message);
+            console.error('❌ Stack:', err.stack);
+            
+            let errorMessage = err.message;
+            
+            if (err.message.includes('User declined')) {
+                errorMessage = 'Rechazaste la firma en Freighter';
+            } else if (err.message.includes('internal error')) {
+                errorMessage = 'Error interno de Freighter. Intenta: 1) Actualizar Freighter, 2) Recargar la página, 3) Desconectar y reconectar la wallet';
+            } else if (err.message.includes('op_no_trust')) {
+                errorMessage = 'La cuenta del issuer no existe';
+            } else if (err.message.includes('op_low_reserve')) {
+                errorMessage = 'Fondos insuficientes (necesitas ~1.5 XLM adicionales)';
             }
+            
+            setError(errorMessage);
             setStatus('');
-
         } finally {
             setIsLoading(false);
         }
-    }, [publicKey, asset, onSuccess]); // Dependencias del useCallback
+    }, [publicKey, asset, onSuccess]);
 
     return (
         <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">
-                🤝 Establecer Trustline para {asset.code}
+                🤝 Establecer Trustline para {asset?.code || 'Asset'}
             </h3>
 
             <p className="text-sm text-gray-600 mb-4">
-                Esto permite que tu cuenta reciba el activo emitido por la cuenta del Issuer. El límite de recepción será **{MAX_LIMIT}**.
+                Esto permite que tu cuenta reciba el activo <strong>{asset?.code}</strong> emitido por la cuenta del Issuer. 
+                El límite de recepción será <strong>{MAX_LIMIT}</strong>.
             </p>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+                <p className="text-xs text-gray-600">
+                    <strong>Issuer:</strong>
+                </p>
+                <p className="text-xs text-gray-800 font-mono break-all mt-1">
+                    {asset?.issuer || 'No definido'}
+                </p>
+            </div>
 
             <button
                 onClick={createTrustline}
@@ -117,15 +183,34 @@ export default function CreateTrustline({ publicKey, asset, onSuccess }) {
                 className={`w-full py-3 px-4 rounded-lg font-bold text-white transition duration-200 ${
                     !publicKey || isLoading 
                         ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-green-600 hover:bg-green-700'
+                        : 'bg-green-600 hover:bg-green-700 active:bg-green-800'
                 }`}
             >
-                {isLoading ? 'Procesando...' : `Crear Trustline para ${asset.code}`}
+                {isLoading ? '⏳ Procesando...' : `✅ Crear Trustline para ${asset?.code || 'Asset'}`}
             </button>
 
-            {/* Mensajes de Estado y Error */}
-            {status && <p className="mt-4 text-green-600 text-sm italic">{status}</p>}
-            {error && <p className="mt-4 text-red-600 text-sm bg-red-100 p-2 rounded">❌ {error}</p>}
+            {status && (
+                <div className="mt-4 p-3 bg-green-50 rounded border border-green-200">
+                    <p className="text-sm text-green-800">{status}</p>
+                </div>
+            )}
+
+            {error && (
+                <div className="mt-4 p-3 bg-red-50 rounded border border-red-200">
+                    <p className="text-sm text-red-800">❌ {error}</p>
+                    <p className="text-xs text-red-600 mt-2">
+                        Si el error persiste, intenta actualizar Freighter o usar otra wallet
+                    </p>
+                </div>
+            )}
+
+            {!publicKey && (
+                <div className="mt-4 p-3 bg-yellow-50 rounded border border-yellow-200">
+                    <p className="text-xs text-yellow-800">
+                        ⚠️ Primero debes conectar tu wallet
+                    </p>
+                </div>
+            )}
         </div>
     );
 }
