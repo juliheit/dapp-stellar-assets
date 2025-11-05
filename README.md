@@ -402,3 +402,121 @@ Los entornos de deploy pueden tener problemas que NO aparecen localmente:
 
 **Deploy** (último intento con fallos): https://dapp-stellar-assets-beta.vercel.app/
                                         https://vercel.com/julietas-projects-eceadff3/dapp-stellar-assets/deployments
+                                        
+---
+
+# 🚀 Resumen de Actualizaciones Críticas (Freighter & Stellar SDK)
+
+Este README resume las correcciones implementadas para resolver el error `e.switch is not a function` y la estabilización de la conexión con la wallet Freighter, permitiendo el envío correcto de transacciones a la Testnet de Stellar.
+
+---
+
+## 🔎 Contexto
+Al integrar Freighter para firmar transacciones Stellar, surgió un error que impedía enviar la transacción a Horizon: `e.switch is not a function`. Además se detectaron condiciones donde la conexión con la wallet no actualizaba correctamente la clave pública (publicKey), provocando intentos de envío con direcciones vacías.
+
+Se aplicaron dos correcciones principales:
+1. Eliminación del re-parsing innecesario del XDR ya firmado por Freighter.
+2. Validación estricta del valor devuelto por `freighterApi.getAddress()`.
+
+---
+
+## 1. 🐞 Solución del Error de Transacción (e.switch is not a function)
+
+### Causa
+El error se producía al intentar reconstruir (reparsear) una transacción ya firmada por Freighter usando:
+```js
+const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, ...);
+```
+Freighter ya devuelve el XDR firmado y volver a parsearlo y manipularlo provocaba conflictos internos en la librería.
+
+### Corrección implementada (ejemplo en CreateTrustline.jsx)
+- Lógica anterior (INCORRECTA)
+```js
+// INCORRECTO: intentar reconstruir/parsear el XDR firmado
+const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, StellarSdk.Networks.TESTNET);
+```
+
+- Lógica nueva (CORRECTA)
+El XDR firmado (string) se envía directamente al endpoint /transactions de Horizon sin re-parsing:
+```js
+// CORRECTO: enviar el XDR firmado tal cual
+await fetch("https://horizon-testnet.stellar.org/transactions", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({ tx: signedXDR })
+});
+```
+
+- Nota clave: `signedXDR` es un string devuelto por Freighter (no re-parsear).
+
+### Resultado
+Se eliminó el paso innecesario de re-parseo. Con esto, el envío de la transacción a la Testnet es exitoso y ya no aparece el error `e.switch is not a function`.
+
+---
+
+## 2. 🔗 Estabilización de la Conexión con Freighter
+
+### Problema
+En algunos casos `freighterApi.getAddress()` devolvía un valor no esperado (por ejemplo `undefined` o un tipo no string) y el componente actualizaba un estado con una dirección vacía, provocando fallos posteriores al intentar enviar transacciones.
+
+### Corrección aplicada (ejemplo en WalletConnect.jsx)
+Se añadió una verificación estricta antes de actualizar el estado:
+```js
+// Ejemplo de manejo robusto al conectar la wallet
+const address = await freighterApi.getAddress();
+
+if (typeof address === 'string' && address.trim().length > 0) {
+  setPublicKey({ address });
+} else {
+  console.warn('Freighter returned invalid address:', address);
+  // manejar estado de wallet desconectada o mostrar mensaje al usuario
+}
+```
+
+### Debugging y logs
+Se añadieron logs para trazar el flujo entre la dApp y Freighter:
+```js
+// Ejemplo de logs para depurar
+console.log('freighterApi.getAddress() ->', address);
+console.log('signedXDR from Freighter ->', signedXDR);
+```
+Estos logs confirman que la wallet devuelve `signedXDR` y permiten localizar si en algún punto el valor pasa a `undefined`.
+
+---
+
+## Archivos modificados (indicativo)
+- `src/components/CreateTrustline.jsx` — quitar re-parsing del XDR y usar fetch con URLSearchParams.
+- `src/components/WalletConnect.jsx` — validación estricta de la dirección devuelta por Freighter y logs de debugging.
+
+---
+
+## Cómo probar (Testnet)
+1. Instala Freighter en tu navegador y conéctala.
+2. Asegúrate de usar cuentas y fondos en Testnet (puedes usar friendbot para recibir XLM).
+3. Ejecuta la dApp en modo desarrollo apuntando a Horizon Testnet (`https://horizon-testnet.stellar.org`).
+4. En la pantalla para crear la trustline:
+   - Haz click para crear la trustline.
+   - Freighter debe abrir el diálogo de confirmación.
+   - Confirma la transacción en Freighter.
+5. Verifica en los logs del navegador:
+   - `signedXDR from Freighter -> <string...>`
+   - `freighterApi.getAddress() -> <G...>`
+
+---
+
+## Troubleshooting rápido
+- Si ves `e.switch is not a function` aún:
+  - Revisa que no estés llamando `TransactionBuilder.fromXDR()` sobre un XDR firmado por Freighter.
+  - Asegúrate de enviar el string `signedXDR` directamente a Horizon via POST.
+- Si la dApp muestra dirección vacía:
+  - Comprueba los logs de `freighterApi.getAddress()`.
+  - Añade la validación `typeof address === 'string' && address.trim().length > 0`.
+
+---
+
+## Siguientes pasos recomendados
+- Añadir tests automatizados (si procede) que simulen la respuesta de Freighter (mock de `getAddress()` y `signTransaction()`).
+- Mejorar UX mostrando estados de carga y errores más descriptivos cuando Horizon responda con errores.
+- Añadir métricas o telemetría (opcional) para medir fallos en la firma y envíos a Testnet.
+
+---
